@@ -53,7 +53,15 @@ export class CostItemService {
 
     const varianceRatio = calculateVarianceRatio(input.budgetAmount, input.actualAmount);
     const threshold = budget.varianceThreshold != null ? Number(budget.varianceThreshold) : null;
-    const autoFlagged = threshold !== null && varianceRatio > threshold;
+    const isZeroBudgetOverspend = varianceRatio === null;
+    const autoFlagged = threshold !== null && (isZeroBudgetOverspend || varianceRatio > threshold);
+
+    let exceptionReason: string | null = null;
+    if (autoFlagged && isZeroBudgetOverspend) {
+      exceptionReason = `预算金额为 0，实际金额 ${toMoney(input.actualAmount)} 超出预算，超过阈值 ${(threshold! * 100).toFixed(2)}%`;
+    } else if (autoFlagged && varianceRatio !== null) {
+      exceptionReason = `实际金额偏离预算比率 ${(varianceRatio * 100).toFixed(2)}% 超过阈值 ${(threshold! * 100).toFixed(2)}%`;
+    }
 
     const costItem = this.costItemRepository.create({
       budgetId: input.budgetId,
@@ -67,9 +75,7 @@ export class CostItemService {
       materialUsageId: input.materialUsageId ?? null,
       laborTimeRecordId: input.laborTimeRecordId ?? null,
       status: autoFlagged ? CostItemStatus.Exception : CostItemStatus.Normal,
-      exceptionReason: autoFlagged
-        ? `实际金额偏离预算比率 ${(varianceRatio * 100).toFixed(2)}% 超过阈值 ${(threshold! * 100).toFixed(2)}%`
-        : null
+      exceptionReason
     });
 
     const saved = await this.costItemRepository.save(costItem);
@@ -79,11 +85,18 @@ export class CostItemService {
     });
 
     if (autoFlagged) {
-      await this.writeAudit(AuditAction.CostItemAutoFlaggedException, saved, context, {
-        varianceRatio: Number((varianceRatio * 100).toFixed(2)),
+      const auditMetadata: Record<string, unknown> = {
         threshold: Number((threshold! * 100).toFixed(2)),
         reason: saved.exceptionReason
-      });
+      };
+      if (isZeroBudgetOverspend) {
+        auditMetadata.varianceRatio = null;
+        auditMetadata.budgetAmount = toMoney(input.budgetAmount);
+        auditMetadata.actualAmount = toMoney(input.actualAmount);
+      } else {
+        auditMetadata.varianceRatio = Number((varianceRatio * 100).toFixed(2));
+      }
+      await this.writeAudit(AuditAction.CostItemAutoFlaggedException, saved, context, auditMetadata);
     }
 
     return saved;
