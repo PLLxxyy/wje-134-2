@@ -85,16 +85,17 @@ export class CostItemService {
     });
 
     if (autoFlagged) {
+      const thresholdPct = Number((threshold! * 100).toFixed(2));
       const auditMetadata: Record<string, unknown> = {
-        threshold: Number((threshold! * 100).toFixed(2)),
+        threshold: thresholdPct,
         reason: saved.exceptionReason
       };
       if (isZeroBudgetOverspend) {
-        auditMetadata.varianceRatio = null;
-        auditMetadata.budgetAmount = toMoney(input.budgetAmount);
-        auditMetadata.actualAmount = toMoney(input.actualAmount);
+        auditMetadata.varianceRatio = 999.99;
+        auditMetadata.budgetAmount = Number(input.budgetAmount);
+        auditMetadata.actualAmount = Number(input.actualAmount);
       } else {
-        auditMetadata.varianceRatio = Number((varianceRatio * 100).toFixed(2));
+        auditMetadata.varianceRatio = Number((varianceRatio! * 100).toFixed(2));
       }
       await this.writeAudit(AuditAction.CostItemAutoFlaggedException, saved, context, auditMetadata);
     }

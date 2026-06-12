@@ -14,6 +14,27 @@ const mockContext = {
   user: { id: 'user-1', role: UserRole.Accountant, name: 'Tester' }
 };
 
+const assertFiniteNumber = (value: unknown, field: string): void => {
+  expect(value).not.toBeNull();
+  expect(value).not.toBeUndefined();
+  expect(typeof value).toBe('number');
+  expect(Number.isFinite(value as number)).toBe(true);
+  expect(Number.isNaN(value as number)).toBe(false);
+  expect(value).not.toBe(Infinity);
+  expect(value).not.toBe(-Infinity);
+};
+
+const assertAutoFlagMetadataAllFinite = (metadata: Record<string, unknown>): void => {
+  assertFiniteNumber(metadata.varianceRatio, 'varianceRatio');
+  assertFiniteNumber(metadata.threshold, 'threshold');
+  if (metadata.budgetAmount !== undefined) {
+    assertFiniteNumber(metadata.budgetAmount, 'budgetAmount');
+  }
+  if (metadata.actualAmount !== undefined) {
+    assertFiniteNumber(metadata.actualAmount, 'actualAmount');
+  }
+};
+
 const makeBudget = (overrides: Partial<ProjectBudget> = {}): ProjectBudget => {
   const budget = new ProjectBudget();
   budget.id = 'budget-1';
@@ -155,9 +176,11 @@ describe('CostItemService', () => {
         (c: any[]) => c[0].action === AuditAction.CostItemAutoFlaggedException
       );
       expect(autoFlaggedCall).toBeDefined();
-      expect(autoFlaggedCall![0].metadata.varianceRatio).toBe(20);
-      expect(autoFlaggedCall![0].metadata.threshold).toBe(10);
-      expect(autoFlaggedCall![0].metadata.reason).toContain('20.00%');
+      const metadata = autoFlaggedCall![0].metadata as Record<string, unknown>;
+      assertAutoFlagMetadataAllFinite(metadata);
+      expect(metadata.varianceRatio).toBe(20);
+      expect(metadata.threshold).toBe(10);
+      expect(metadata.reason).toContain('20.00%');
     });
 
     it('should not auto-flag when no threshold is set on budget', async () => {
@@ -200,6 +223,10 @@ describe('CostItemService', () => {
         expect(result.exceptionReason).toContain('预算金额为 0');
         expect(result.exceptionReason).toContain('50000.00');
         expect(result.exceptionReason).not.toContain('Infinity');
+        expect(result.exceptionReason).not.toContain('NaN');
+        assertFiniteNumber(Number(result.budgetAmount), 'costItem.budgetAmount');
+        assertFiniteNumber(Number(result.actualAmount), 'costItem.actualAmount');
+        assertFiniteNumber(Number(result.varianceAmount), 'costItem.varianceAmount');
       });
 
       it('should store finite values in auto-flagged audit metadata for zero budget', async () => {
@@ -215,12 +242,12 @@ describe('CostItemService', () => {
           (c: any[]) => c[0].action === AuditAction.CostItemAutoFlaggedException
         );
         expect(autoFlaggedCall).toBeDefined();
-        const metadata = autoFlaggedCall![0].metadata;
-        expect(metadata.varianceRatio).toBeNull();
-        expect(metadata.budgetAmount).toBe('0.00');
-        expect(metadata.actualAmount).toBe('50000.00');
+        const metadata = autoFlaggedCall![0].metadata as Record<string, unknown>;
+        assertAutoFlagMetadataAllFinite(metadata);
+        expect(metadata.varianceRatio).toBe(999.99);
         expect(metadata.threshold).toBe(10);
-        expect(isFinite(metadata.threshold as number)).toBe(true);
+        expect(metadata.budgetAmount).toBe(0);
+        expect(metadata.actualAmount).toBe(50000);
       });
 
       it('should not auto-flag when budget is 0, actual is 0, and threshold exists', async () => {
@@ -233,6 +260,8 @@ describe('CostItemService', () => {
         );
         expect(result.status).toBe(CostItemStatus.Normal);
         expect(result.exceptionReason).toBeNull();
+        assertFiniteNumber(Number(result.budgetAmount), 'costItem.budgetAmount');
+        assertFiniteNumber(Number(result.actualAmount), 'costItem.actualAmount');
       });
 
       it('should not auto-flag zero-budget overspend when no threshold is set', async () => {
@@ -244,6 +273,42 @@ describe('CostItemService', () => {
           mockContext
         );
         expect(result.status).toBe(CostItemStatus.Normal);
+      });
+
+      it('should store finite varianceRatio even with extremely large variance', async () => {
+        jest.spyOn(budgetService, 'getById').mockResolvedValue(
+          makeBudget({ varianceThreshold: '0.1000' })
+        );
+        await service.create(
+          { ...baseInput, budgetAmount: 1, actualAmount: 1_000_000_000 },
+          mockContext
+        );
+        const auditCalls = (auditLogService.write as jest.Mock).mock.calls;
+        const autoFlaggedCall = auditCalls.find(
+          (c: any[]) => c[0].action === AuditAction.CostItemAutoFlaggedException
+        );
+        expect(autoFlaggedCall).toBeDefined();
+        const metadata = autoFlaggedCall![0].metadata as Record<string, unknown>;
+        assertAutoFlagMetadataAllFinite(metadata);
+      });
+
+      it('should store finite threshold in metadata for different precision values', async () => {
+        jest.spyOn(budgetService, 'getById').mockResolvedValue(
+          makeBudget({ varianceThreshold: '0.0001' })
+        );
+        await service.create(
+          { ...baseInput, budgetAmount: 1000, actualAmount: 2000 },
+          mockContext
+        );
+        const auditCalls = (auditLogService.write as jest.Mock).mock.calls;
+        const autoFlaggedCall = auditCalls.find(
+          (c: any[]) => c[0].action === AuditAction.CostItemAutoFlaggedException
+        );
+        expect(autoFlaggedCall).toBeDefined();
+        const metadata = autoFlaggedCall![0].metadata as Record<string, unknown>;
+        assertAutoFlagMetadataAllFinite(metadata);
+        expect(metadata.threshold).toBe(0.01);
+        expect(metadata.varianceRatio).toBe(100);
       });
     });
   });
