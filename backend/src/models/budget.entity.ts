@@ -41,6 +41,9 @@ export class ProjectBudget {
   @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
   approvedAt?: Date | null;
 
+  @Column({ name: 'variance_threshold', type: 'numeric', precision: 5, scale: 4, nullable: true })
+  varianceThreshold?: string | null;
+
   @Column({ type: 'text', nullable: true })
   remark?: string | null;
 

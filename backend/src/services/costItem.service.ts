@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CostItem } from '../models/costItem.entity';
 import { AuditAction, BudgetStatus, CostCategory, CostItemStatus } from '../types/enums';
 import { RequestContext } from '../types/interfaces';
-import { calculateVarianceAmount, toMoney } from '../utils/calculator';
+import { calculateVarianceAmount, calculateVarianceRatio, toMoney } from '../utils/calculator';
 import { AuditLogService } from './auditLog.service';
 import { BudgetService } from './budget.service';
 
@@ -51,6 +51,10 @@ export class CostItemService {
       throw new BadRequestException('只能在已审批预算下录入成本');
     }
 
+    const varianceRatio = calculateVarianceRatio(input.budgetAmount, input.actualAmount);
+    const threshold = budget.varianceThreshold != null ? Number(budget.varianceThreshold) : null;
+    const autoFlagged = threshold !== null && varianceRatio > threshold;
+
     const costItem = this.costItemRepository.create({
       budgetId: input.budgetId,
       category: input.category,
@@ -62,7 +66,10 @@ export class CostItemService {
       voucherNo: input.voucherNo,
       materialUsageId: input.materialUsageId ?? null,
       laborTimeRecordId: input.laborTimeRecordId ?? null,
-      status: CostItemStatus.Normal
+      status: autoFlagged ? CostItemStatus.Exception : CostItemStatus.Normal,
+      exceptionReason: autoFlagged
+        ? `实际金额偏离预算比率 ${(varianceRatio * 100).toFixed(2)}% 超过阈值 ${(threshold! * 100).toFixed(2)}%`
+        : null
     });
 
     const saved = await this.costItemRepository.save(costItem);
@@ -70,6 +77,15 @@ export class CostItemService {
     await this.writeAudit(AuditAction.CostItemCreated, saved, context, {
       varianceAmount: saved.varianceAmount
     });
+
+    if (autoFlagged) {
+      await this.writeAudit(AuditAction.CostItemAutoFlaggedException, saved, context, {
+        varianceRatio: Number((varianceRatio * 100).toFixed(2)),
+        threshold: Number((threshold! * 100).toFixed(2)),
+        reason: saved.exceptionReason
+      });
+    }
+
     return saved;
   }
 

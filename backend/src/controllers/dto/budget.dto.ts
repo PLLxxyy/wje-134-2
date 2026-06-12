@@ -27,6 +27,12 @@ export class CreateBudgetDto {
   @IsEnum(Currency)
   currency?: Currency;
 
+  @ApiPropertyOptional({ example: 0.1, description: '差异比率阈值，如 0.1 表示 10%' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  varianceThreshold?: number;
+
   @ApiPropertyOptional({ example: '含钢筋、水泥和模板工程预算' })
   @IsOptional()
   @IsString()

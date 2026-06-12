@@ -68,6 +68,7 @@ export enum AuditAction {
   CostItemCreated = 'CostItemCreated',
   CostItemReviewed = 'CostItemReviewed',
   CostItemMarkedException = 'CostItemMarkedException',
+  CostItemAutoFlaggedException = 'CostItemAutoFlaggedException',
   ChangeOrderCreated = 'ChangeOrderCreated',
   ChangeOrderSubmitted = 'ChangeOrderSubmitted',
   ChangeOrderApproved = 'ChangeOrderApproved',

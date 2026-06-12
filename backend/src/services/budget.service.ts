@@ -13,6 +13,7 @@ export interface CreateBudgetInput {
   totalAmount: number;
   reservedAmount?: number;
   currency?: Currency;
+  varianceThreshold?: number;
   remark?: string;
 }
 
@@ -58,6 +59,7 @@ export class BudgetService {
       usedAmount: toMoney(0),
       reservedAmount: toMoney(input.reservedAmount ?? 0),
       currency: input.currency ?? Currency.CNY,
+      varianceThreshold: input.varianceThreshold != null ? input.varianceThreshold.toFixed(4) : null,
       status: BudgetStatus.Draft,
       remark: input.remark ?? null
     });

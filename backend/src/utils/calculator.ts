@@ -13,6 +13,15 @@ export function calculateVarianceAmount(budgetAmount: string | number, actualAmo
   return toMoney(Number(actualAmount) - Number(budgetAmount));
 }
 
+export function calculateVarianceRatio(budgetAmount: string | number, actualAmount: string | number): number {
+  const budget = Number(budgetAmount);
+  if (budget === 0) {
+    return Number(actualAmount) === 0 ? 0 : Infinity;
+  }
+
+  return Math.abs((Number(actualAmount) - budget) / budget);
+}
+
 export function calculateChangedAmount(originalAmount: string | number, changeAmount: string | number): string {
   return toMoney(Number(originalAmount) + Number(changeAmount));
 }
